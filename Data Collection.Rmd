@@ -1,0 +1,85 @@
+---
+title: "Data Mananging"
+author: "Dawson Shero"
+date: "2026-09-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Load Packages
+```{r, warning=FALSE, echo=FALSE, include=FALSE}
+library(here) 
+library(readxl) 
+library(dplyr) 
+library(purrr) 
+library(janitor) 
+library(tibble)
+```
+
+
+## Load Data and Combine Into One Dataset
+```{r}
+# Sets a directory for functions to pull all data together
+data_dir <- here("data", "raw_data")
+files <- list.files(data_dir, pattern = "\\.xlsx$", full.names = TRUE)
+# Double checks how many files are in the data directory
+cat("Excel files found:", length(files), "\n")
+
+read_kv_sheet <- function(path, sheet) { 
+  raw <- read_excel( path, sheet = sheet, col_names = c("key", "value"))
+  raw <- raw %>% filter(!is.na(key))
+  keys <- gsub(":$", "", raw$key) 
+  keys <- make_clean_names(keys)
+  vals <- as.list(raw$value)
+  names(vals) <- keys
+  as_tibble(vals) 
+  }
+
+read_one_file <- function(path) { 
+  meta1 <- read_kv_sheet( path, sheet = "Sheet1" ) 
+  meta3 <- read_kv_sheet( path, sheet = "Sheet3" )
+  meta <- bind_cols( meta1, meta3, .name_repair = "unique" )
+  test_data <- read_excel( path, sheet = "Sheet2" ) %>% clean_names() 
+  test_data <- test_data %>% 
+    mutate( source_file = basename(path))
+  meta_repeated <- meta[ rep(1, nrow(test_data)), , drop = FALSE ] 
+  test_data %>% 
+    bind_cols(meta_repeated)
+  }
+
+results <- map( files, function(f) { 
+  tryCatch( list( ok = TRUE, data = read_one_file(f), file = f, error = NA_character_ ), 
+            error = function(e) { list( ok = FALSE, data = NULL, file = f, error = conditionMessage(e)) 
+              } 
+            ) 
+  })
+
+successful <- results %>% keep(~ .x$ok)
+
+failed <- results %>% 
+  keep(~ !.x$ok) %>%
+  map_dfr( ~ tibble( file = basename(.x$file), error = .x$error ))
+
+bad_files <- successful %>%
+  map("data") %>%
+  keep(~ !is.numeric(.x$vo2max)) %>%
+  map_chr(~ unique(.x$source_file))
+
+bad_files
+
+successful %>%
+  map("data") %>%
+  keep(~ !is.numeric(.x$vo2max)) %>%
+  map(~ distinct(.x, source_file, vo2max))
+
+all_data <- successful %>% 
+  map("data") %>% 
+  bind_rows()
+
+write.csv(all_data, here("data", "combined_tests.csv"), row.names = F)
+```
+

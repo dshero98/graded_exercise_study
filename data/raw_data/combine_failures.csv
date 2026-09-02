@@ -1,0 +1,4 @@
+"file","error"
+"C:/Ole Miss PhD work/open_source_graded_exercise/data/raw_data/A224.xlsx","Sheet 3 has 3 columns (3 unskipped), but `col_names` has length 2."
+"C:/Ole Miss PhD work/open_source_graded_exercise/data/raw_data/A229.xlsx","Sheet 3 has 1 columns (1 unskipped), but `col_names` has length 2."
+"C:/Ole Miss PhD work/open_source_graded_exercise/data/raw_data/A519.xlsx","Sheet 3 has 1 columns (1 unskipped), but `col_names` has length 2."
