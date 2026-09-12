@@ -18,11 +18,13 @@ library(dplyr)
 library(purrr) 
 library(janitor) 
 library(tibble)
+library(lubridate)
+library(tidyverse)
 ```
 
 
 ## Load Data and Combine Into One Dataset
-```{r}
+```{r, include=FALSE, echo=FALSE, message=FALSE}
 # Sets a directory for functions to pull all data together
 data_dir <- here("data", "raw_data")
 files <- list.files(data_dir, pattern = "\\.xlsx$", full.names = TRUE)
@@ -81,5 +83,65 @@ all_data <- successful %>%
   bind_rows()
 
 write.csv(all_data, here("data", "combined_tests.csv"), row.names = F)
+```
+
+## Data Cleaning and Manipulation
+```{r}
+df_raw <- read.csv(here("data", "combined_tests.csv"))
+
+df_raw <- df_raw %>%
+  mutate(
+    vo2max_new = case_when(
+      source_file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max_absolute,
+      TRUE ~ vo2max
+    ),
+    vo2max_absolute_new = case_when(
+      source_file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max,
+      TRUE ~ vo2max_absolute
+    )
+  )
+
+df_raw <- df_raw |> 
+  mutate(vo2max_new = case_when(
+    source_file == "A539.xlsx" ~ 51.00,
+    T ~ vo2max_new
+  ))
+
+colnames(df_raw)
+
+df_clean <- df_raw |> 
+  select("source_file", "gender", "event", "test", "test_date", "dob", "height", "weight", 
+         "bmi", "fat", "lbm", "hb", "hct", "vo2max_new", "vo2max_absolute_new", "hrmax", "load_tlac",
+         "hr_tlac", "percent_vo2max_tlac", "percent_h_rmax_tlac", "bla_tlac")
+
+```
+
+
+```{r}
+df_clean <- df_clean %>% 
+  distinct(source_file, .keep_all = TRUE)
+
+df_clean <- df_clean %>%
+  mutate(test = case_match(test,
+    c("Rowing", "Kayak") ~ "watersports",
+    .default = test
+  ))
+
+table(df_clean$gender)
+round(prop.table(table(df_clean$gender)) * 100, 2)
+
+table(df_clean$test)
+round(prop.table(table(df_clean$test)) * 100, 2)
+
+ggplot(df_clean, aes(x = gender, fill = gender)) +
+  geom_bar() +
+  labs(title = "Gender Distribution Split", y = "Count", x = "Gender") +
+  theme_minimal()
+
+ggplot(df_clean, aes(x = test, fill = test)) +
+  geom_bar() +
+  labs(title = "Modalitiy Distribution Split", y = "Count", x = "test") +
+  theme_minimal()
+
 ```
 
