@@ -89,38 +89,52 @@ write.csv(all_data, here("data", "combined_tests.csv"), row.names = F)
 ```{r}
 df_raw <- read.csv(here("data", "combined_tests.csv"))
 
+df_raw <- df_raw |> 
+  rename(file = "source_file")
+
+df_raw_sum <- read.csv(here("data", "Data_Summary_with_age.csv"))
+
+df_raw_sum <- df_raw_sum |> 
+  select("file", "age")
+
+
+
 df_raw <- df_raw %>%
   mutate(
     vo2max_new = case_when(
-      source_file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max_absolute,
-      TRUE ~ vo2max
+      file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max_absolute,
+      T ~ vo2max
     ),
     vo2max_absolute_new = case_when(
-      source_file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max,
-      TRUE ~ vo2max_absolute
+      file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max,
+      T ~ vo2max_absolute
     )
   )
 
 df_raw <- df_raw |> 
   mutate(vo2max_new = case_when(
-    source_file == "A539.xlsx" ~ 51.00,
+    file == "A539.xlsx" ~ 51.00,
     T ~ vo2max_new
   ))
 
 colnames(df_raw)
 
 df_clean <- df_raw |> 
-  select("source_file", "gender", "event", "test", "test_date", "dob", "height", "weight", 
-         "bmi", "fat", "lbm", "hb", "hct", "vo2max_new", "vo2max_absolute_new", "hrmax", "load_tlac",
+  select("file", "gender", "event", "test", "fat", "lbm", "hb",
+         "hct", "vo2max_new", "vo2max_absolute_new", "hrmax", "load_tlac",
          "hr_tlac", "percent_vo2max_tlac", "percent_h_rmax_tlac", "bla_tlac")
 
+df_clean <- merge(df_clean, df_raw_sum, by = "file")
+
+df_clean <- df_clean |> 
+  relocate("age", .after = gender)
+
+df_clean <- df_clean %>% 
+  distinct(file, .keep_all = T)
 ```
 
 
 ```{r}
-df_clean <- df_clean %>% 
-  distinct(source_file, .keep_all = TRUE)
-
 df_clean <- df_clean %>%
   mutate(test = case_match(test,
     c("Rowing", "Kayak") ~ "watersports",
@@ -144,4 +158,7 @@ ggplot(df_clean, aes(x = test, fill = test)) +
   theme_minimal()
 
 ```
+
+
+
 
