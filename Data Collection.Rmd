@@ -20,6 +20,14 @@ library(janitor)
 library(tibble)
 library(lubridate)
 library(tidyverse)
+library(broom)
+library(car)
+library(lmtest)
+library(sandwich)
+library(emmeans)
+library(interactions)
+library(performance)
+
 ```
 
 
@@ -133,8 +141,94 @@ df_clean <- df_clean %>%
   distinct(file, .keep_all = T)
 
 colnames(df_clean)
+
+anyNA(df_clean)
+
+colSums(is.na(df_clean))
+
+df_clean$weight[df_clean$weight == "Missing"] <- NA
+
+df_clean <- df_clean |> 
+  na.omit() |> 
+  mutate(weight = as.numeric(as.character(weight)))
+
+df_clean <- df_clean %>%
+  mutate(across(where(is.numeric), ~ round(., 2)))
+
+summary(df_clean)
 ```
 
+
+```{r}
+# Descriptize stats with no moderators
+df_clean %>%
+  summarise(
+    n = n(),
+    age_mean = mean(age, na.rm = TRUE),
+    age_sd = sd(age, na.rm = TRUE),
+    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
+    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
+    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
+    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE)
+  )
+
+# Descriptize stats grouped by test
+df_clean %>%
+  group_by(test) %>%
+  summarise(
+    n = n(),
+    age_mean = mean(age, na.rm = TRUE),
+    age_sd = sd(age, na.rm = TRUE),
+    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
+    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
+    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
+    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Descriptize stats grouped by test
+df_clean %>%
+  group_by(test) %>%
+  summarise(
+    n = n(),
+    age_mean = mean(age, na.rm = TRUE),
+    age_sd = sd(age, na.rm = TRUE),
+    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
+    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
+    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
+    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Descriptize stats grouped by Sex
+df_clean %>%
+  group_by(gender) %>%
+  summarise(
+    n = n(),
+    age_mean = mean(age, na.rm = TRUE),
+    age_sd = sd(age, na.rm = TRUE),
+    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
+    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
+    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
+    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+# Center predictors since its continuous variables
+df_clean <- df_clean %>%
+  mutate(
+    age_c = age - mean(age, na.rm = TRUE),
+    weight_c = weight - mean(weight, na.rm = TRUE),
+    fat_c = fat - mean(fat, na.rm = TRUE),
+    lbm_c = lbm - mean(lbm, na.rm = TRUE),
+    hb_c = hb - mean(hb, na.rm = TRUE),
+    hct_c = hct - mean(hct, na.rm = TRUE)
+  )
+
+# it said to center all continuous variables to make it easier to interpert
+```
 
 ```{r}
 df_clean <- df_clean %>%
@@ -160,14 +254,191 @@ ggplot(df_clean, aes(x = test, fill = test)) +
   theme_minimal()
 
 ```
+ 
+# Just Linear regressions
+```{r}
+A1 <- lm(
+  vo2max_new ~ weight_c + fat_c + lbm_c + hb_c + hct_c,
+  data = df_clean
+)
+
+A2 <- lm(
+  vo2max_absolute_new ~ weight_c + fat_c + lbm_c + hb_c + hct_c,
+  data = df_clean
+)
+
+summary(A1)
+summary(A2)
+
+tidy(A1, conf.int = TRUE)
+tidy(A2, conf.int = TRUE)
+
+glance(A1)
+glance(A2)
+```
+
+# Comparing absolute and relative
+```{r}
+
+rq1_data <- df_clean |> 
+  select( vo2max_new, vo2max_absolute_new, weight_c,
+    fat_c, lbm_c, hb_c, hct_c
+  ) |> 
+  pivot_longer(
+    cols = c(vo2max_new, vo2max_absolute_new),
+    names_to = "vo2_type",
+    values_to = "vo2max"
+  ) |> 
+  mutate(
+    vo2_type = factor(
+      vo2_type,
+      levels = c(
+        "vo2max_absolute_new",
+        "vo2max_new"
+      ),
+      labels = c(
+        "Absolute",
+        "Relative"
+      )
+    )
+  )
+
+RQ1 <- lm(
+  vo2max ~
+    vo2_type * (weight_c + fat_c + lbm_c + hb_c + hct_c),
+  data = rq1_data
+)
+
+summary(RQ1)
+```
+
+
+
+# RQ2
+```{r}
+A1_age <- lm(
+  vo2max_new ~
+    weight_c + fat_c + lbm_c + hb_c + hct_c +
+    age_c +
+    weight_c:age_c +
+    fat_c:age_c +
+    lbm_c:age_c +
+    hb_c:age_c +
+    hct_c:age_c,
+  data = df_clean
+)
+
+summary(A1_age)
+
+A2_age <- lm(
+  vo2max_absolute_new ~
+    weight_c + fat_c + lbm_c + hb_c + hct_c +
+    age_c +
+    weight_c:age_c +
+    fat_c:age_c +
+    lbm_c:age_c +
+    hb_c:age_c +
+    hct_c:age_c,
+  data = df_clean
+)
+
+summary(A2_age)
+
+A1_sex <- lm(
+  vo2max_new ~
+    weight_c + fat_c + lbm_c + hb_c + hct_c +
+    gender +
+    weight_c:gender +
+    fat_c:gender +
+    lbm_c:gender +
+    hb_c:gender +
+    hct_c:gender,
+  data = df_clean
+)
+
+summary(A1_sex)
+
+A2_sex <- lm(
+  vo2max_absolute_new ~
+    weight_c + fat_c + lbm_c + hb_c + hct_c +
+    gender +
+    weight_c:gender +
+    fat_c:gender +
+    lbm_c:gender +
+    hb_c:gender +
+    hct_c:gender,
+  data = df_clean
+)
+
+summary(A2_sex)
+
+A1_modality <- lm(
+  vo2max_new ~
+    weight_c + fat_c + lbm_c + hb_c + hct_c +
+    test +
+    weight_c:test +
+    fat_c:test +
+    lbm_c:test +
+    hb_c:test +
+    hct_c:test,
+  data = df_clean
+)
+
+summary(A1_modality)
+
+A2_modality <- lm(
+  vo2max_absolute_new ~
+    weight_c + fat_c + lbm_c + hb_c + hct_c +
+    test +
+    weight_c:test +
+    fat_c:test +
+    lbm_c:test +
+    hb_c:test +
+    hct_c:test,
+  data = df_clean
+)
+
+summary(A2_modality)
+```
 
 
 ```{r}
-# predictors with no moderator (relative)
-A1 <- lm(vo2max_new ~ weight + fat + lbm + hb + hct, data = df_clean)
-summary(A1)
+A1_interactions_age <- tidy(A1_age, conf.int = TRUE) %>%
+  filter(str_detect(term, ":"))
+
+A2_interactions_age <- tidy(A2_age, conf.int = TRUE) %>%
+  filter(str_detect(term, ":"))
+
+A1_interactions_age
+A2_interactions_age
+
+A1_interactions_sex <- tidy(A1_sex, conf.int = TRUE) %>%
+  filter(str_detect(term, ":"))
+
+A2_interactions_sex <- tidy(A2_sex, conf.int = TRUE) %>%
+  filter(str_detect(term, ":"))
+
+A1_interactions_sex
+A2_interactions_sex
+
+A1_interactions_mod <- tidy(A1_modality, conf.int = TRUE) %>%
+  filter(str_detect(term, ":"))
+
+A2_interactions_mod <- tidy(A2_modality, conf.int = TRUE) %>%
+  filter(str_detect(term, ":"))
+
+A1_interactions_mod
+A2_interactions_mod
+
+```
+
+
+```{r}
+par(mfrow = c(2, 2))
 plot(A1)
 
+par(mfrow = c(2, 2))
+plot(A2)
 ```
 
 
