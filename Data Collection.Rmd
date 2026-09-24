@@ -1,17 +1,32 @@
 ---
-title: "Data Mananging"
+title: "Predictors of Absolute VO2max"
 author: "Dawson Shero"
-date: "2026-09-02"
-output: html_document
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: '2'
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 4.5,
+  fig.align = "center"
+)
 ```
 
-
-## Load Packages
-```{r, warning=FALSE, echo=FALSE, include=FALSE}
+```{r packages, include=FALSE}
 library(here) 
 library(readxl) 
 library(dplyr) 
@@ -28,11 +43,23 @@ library(emmeans)
 library(interactions)
 library(performance)
 
+# Helper for tables: 3 decimals, and p-values below 0.001 shown as "<0.001"
+tab <- function(x, caption = NULL) {
+  x |>
+    mutate(across(any_of(c("p.value", "p_value", "p_holm")),
+                  ~ ifelse(. < 0.001, "<0.001", sprintf("%.3f", .)))) |>
+    knitr::kable(digits = 3, caption = caption)
+}
 ```
 
 
-## Load Data and Combine Into One Dataset
-```{r, include=FALSE, echo=FALSE, message=FALSE, eval=FALSE}
+# Setup
+
+## Combine Raw Data Files
+
+This step was run once to combine the individual Excel files into `combined_tests.csv` and is not re-run after.
+
+```{r combine-data, include=FALSE, eval=FALSE}
 # Sets a directory for functions to pull all data together
 data_dir <- here("data", "raw_data")
 files <- list.files(data_dir, pattern = "\\.xlsx$", full.names = TRUE)
@@ -93,8 +120,9 @@ all_data <- successful %>%
 write.csv(all_data, here("data", "combined_tests.csv"), row.names = F)
 ```
 
-## Data Cleaning and Manipulation
-```{r}
+# Data Cleaning
+
+```{r cleaning, results='hide'}
 df_raw <- read.csv(here("data", "combined_tests.csv"))
 
 df_raw <- df_raw |> 
@@ -105,31 +133,13 @@ df_raw_sum <- read.csv(here("data", "Data_Summary_with_age.csv"))
 df_raw_sum <- df_raw_sum |> 
   select("file", "age")
 
-
-
-df_raw <- df_raw %>%
-  mutate(
-    vo2max_new = case_when(
-      file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max_absolute,
-      T ~ vo2max
-    ),
-    vo2max_absolute_new = case_when(
-      file %in% c("A539.xlsx", "A140.xlsx") ~ vo2max,
-      T ~ vo2max_absolute
-    )
-  )
-
-df_raw <- df_raw |> 
-  mutate(vo2max_new = case_when(
-    file == "A539.xlsx" ~ 51.00,
-    T ~ vo2max_new
-  ))
+### Making a df that only has variables that are needed for the study
 
 colnames(df_raw)
 
 df_clean <- df_raw |> 
   select("file", "gender", "event", "test", "height", "weight", "fat", "lbm", "hb",
-         "hct", "vo2max_new", "vo2max_absolute_new", "hrmax", "load_tlac",
+         "hct", "vo2max", "vo2max_absolute", "hrmax", "load_tlac",
          "hr_tlac", "percent_vo2max_tlac", "percent_h_rmax_tlac", "bla_tlac")
 
 df_clean <- merge(df_clean, df_raw_sum, by = "file")
@@ -137,9 +147,13 @@ df_clean <- merge(df_clean, df_raw_sum, by = "file")
 df_clean <- df_clean |> 
   relocate("age", .after = gender)
 
-df_clean <- df_clean %>% 
+df_clean <- df_clean |> 
   distinct(file, .keep_all = T)
 
+df_clean <- df_clean |>
+  filter(!file %in% c("A539.xlsx", "A140.xlsx", "A562.xlsx", "A1065.xlsx"))
+
+### Df manipulation and cleaning for analysis
 colnames(df_clean)
 
 anyNA(df_clean)
@@ -152,293 +166,270 @@ df_clean <- df_clean |>
   na.omit() |> 
   mutate(weight = as.numeric(as.character(weight)))
 
-df_clean <- df_clean %>%
+df_clean <- df_clean |> 
   mutate(across(where(is.numeric), ~ round(., 2)))
 
-summary(df_clean)
-```
+df_clean <- df_clean |> 
+  filter(age >= 18)
 
+df_clean <- df_clean |> 
+  rename(sex = gender)
 
-```{r}
-# Descriptize stats with no moderators
-df_clean %>%
-  summarise(
-    n = n(),
-    age_mean = mean(age, na.rm = TRUE),
-    age_sd = sd(age, na.rm = TRUE),
-    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
-    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
-    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
-    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE)
-  )
-
-# Descriptize stats grouped by test
-df_clean %>%
-  group_by(test) %>%
-  summarise(
-    n = n(),
-    age_mean = mean(age, na.rm = TRUE),
-    age_sd = sd(age, na.rm = TRUE),
-    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
-    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
-    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
-    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Descriptize stats grouped by test
-df_clean %>%
-  group_by(test) %>%
-  summarise(
-    n = n(),
-    age_mean = mean(age, na.rm = TRUE),
-    age_sd = sd(age, na.rm = TRUE),
-    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
-    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
-    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
-    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Descriptize stats grouped by Sex
-df_clean %>%
-  group_by(gender) %>%
-  summarise(
-    n = n(),
-    age_mean = mean(age, na.rm = TRUE),
-    age_sd = sd(age, na.rm = TRUE),
-    abs_vo2_mean = mean(vo2max_absolute_new, na.rm = TRUE),
-    abs_vo2_sd = sd(vo2max_absolute_new, na.rm = TRUE),
-    rel_vo2_mean = mean(vo2max_new, na.rm = TRUE),
-    rel_vo2_sd = sd(vo2max_new, na.rm = TRUE),
-    .groups = "drop"
-  )
-```
-
-```{r}
-# Center predictors since its continuous variables
-df_clean <- df_clean %>%
-  mutate(
-    age_c = age - mean(age, na.rm = TRUE),
-    weight_c = weight - mean(weight, na.rm = TRUE),
-    fat_c = fat - mean(fat, na.rm = TRUE),
-    lbm_c = lbm - mean(lbm, na.rm = TRUE),
-    hb_c = hb - mean(hb, na.rm = TRUE),
-    hct_c = hct - mean(hct, na.rm = TRUE)
-  )
-
-# it said to center all continuous variables to make it easier to interpert
-```
-
-```{r}
 df_clean <- df_clean %>%
   mutate(test = case_match(test,
     c("Rowing", "Kayak") ~ "watersports",
     .default = test
   ))
+```
 
-table(df_clean$gender)
-round(prop.table(table(df_clean$gender)) * 100, 2)
+**Cleaning notes**
 
-table(df_clean$test)
-round(prop.table(table(df_clean$test)) * 100, 2)
+- Four participants (A539, A140, A562, A1065) were excluded because of implausible or irreconcilable values (VO2max, body fat %, hematocrit).
+- Participants under 18 or with missing values were removed, and rowing and kayak were combined into "watersports".
+- Final analytic sample: **N = `r nrow(df_clean)`** (`r sum(df_clean$sex == "F")` women, `r sum(df_clean$sex == "M")` men).
 
-ggplot(df_clean, aes(x = gender, fill = gender)) +
+
+# Descriptive Statistics
+
+```{r descriptives}
+# Overall
+df_clean |>
+  summarise(
+    n = n(),
+    age_mean = mean(age),
+    age_sd = sd(age),
+    abs_vo2_mean = mean(vo2max_absolute),
+    abs_vo2_sd = sd(vo2max_absolute)
+  ) |>
+  knitr::kable(digits = 2, caption = "Overall sample")
+
+# By modality
+df_clean |>
+  group_by(test) |>
+  summarise(
+    n = n(),
+    age_mean = mean(age),
+    age_sd = sd(age),
+    abs_vo2_mean = mean(vo2max_absolute),
+    abs_vo2_sd = sd(vo2max_absolute),
+    .groups = "drop"
+  ) |>
+  knitr::kable(digits = 2, caption = "By modality")
+
+# By sex
+df_clean |>
+  group_by(sex) |>
+  summarise(
+    n = n(),
+    age_mean = mean(age),
+    age_sd = sd(age),
+    abs_vo2_mean = mean(vo2max_absolute),
+    abs_vo2_sd = sd(vo2max_absolute),
+    .groups = "drop"
+  ) |>
+  knitr::kable(digits = 2, caption = "By sex")
+```
+
+```{r center-note, include=FALSE, eval=FALSE}
+# Center predictors since its continuous variables
+df_clean <- df_clean %>%
+  mutate(
+    age_c = age - mean(age),
+    weight_c = weight - mean(weight),
+    fat_c = fat - mean(fat),
+    lbm_c = lbm - mean(lbm),
+    hb_c = hb - mean(hb),
+    hct_c = hct - mean(hct)
+  )
+
+# Wurm & Reitan (2025) looked into mean centering for regression analyses, they found that recommendations based on statistical textbooks showed disagreement on centering. The authors also ran ran regression models after review recommendations and found that mean centering is up in the air about aiding in interpretation and its not necessary
+```
+
+```{r distributions, fig.height=3.5}
+# Check that there are enough participants in each moderator group
+df_clean |>
+  count(sex) |>
+  mutate(percent = round(n / sum(n) * 100, 2)) |>
+  knitr::kable(caption = "Sex distribution")
+
+df_clean |>
+  count(test) |>
+  mutate(percent = round(n / sum(n) * 100, 2)) |>
+  knitr::kable(caption = "Modality distribution")
+
+ggplot(df_clean, aes(x = sex, fill = sex)) +
   geom_bar() +
-  labs(title = "Gender Distribution Split", y = "Count", x = "Gender") +
+  labs(title = "Sex Distribution Split", y = "Count", x = "Sex") +
   theme_minimal()
 
 ggplot(df_clean, aes(x = test, fill = test)) +
   geom_bar() +
-  labs(title = "Modalitiy Distribution Split", y = "Count", x = "test") +
+  labs(title = "Modality Distribution Split", y = "Count", x = "Modality") +
   theme_minimal()
-
 ```
- 
-# Just Linear regressions
-```{r}
-A1 <- lm(
-  vo2max_new ~ weight_c + fat_c + lbm_c + hb_c + hct_c,
-  data = df_clean
-)
 
-A2 <- lm(
-  vo2max_absolute_new ~ weight_c + fat_c + lbm_c + hb_c + hct_c,
-  data = df_clean
-)
+
+# Research Question 1
+
+> How well do the known predictors (body fat %, lean body mass, hemoglobin, hematocrit) jointly explain absolute VO2max, without moderators? Body weight is left out because it is almost fully determined by fat % and lean mass.
+
+## Model and coefficients
+
+```{r rq1-model}
+A1 <- lm(vo2max_absolute ~ fat + lbm + hb + hct, data = df_clean)
 
 summary(A1)
-summary(A2)
 
-tidy(A1, conf.int = TRUE)
-tidy(A2, conf.int = TRUE)
+avPlots(A1)
 
-glance(A1)
-glance(A2)
+tidy(A1, conf.int = TRUE) |> tab("RQ1: Regression coefficients")
+
+glance(A1) |>
+  select(r.squared, adj.r.squared, sigma, statistic, p.value, nobs) |>
+  tab("RQ1: Overall model fit")
 ```
 
-# Comparing absolute and relative
-```{r}
+**Interpretation:** Together the four predictors explain about 72% of the variance in absolute VO2max (R² = 0.72). Lean mass is the strongest predictor: each additional kg is associated with about 0.061 L/min more VO2max (95% CI 0.057 to 0.065). Each additional percentage point of body fat is associated with about 0.023 L/min less (CI -0.030 to -0.016). Hemoglobin and hematocrit are not associated with VO2max once body composition is accounted for (their CIs include zero).
 
-rq1_data <- df_clean |> 
-  select( vo2max_new, vo2max_absolute_new, weight_c,
-    fat_c, lbm_c, hb_c, hct_c
-  ) |> 
-  pivot_longer(
-    cols = c(vo2max_new, vo2max_absolute_new),
-    names_to = "vo2_type",
-    values_to = "vo2max"
-  ) |> 
-  mutate(
-    vo2_type = factor(
-      vo2_type,
-      levels = c(
-        "vo2max_absolute_new",
-        "vo2max_new"
-      ),
-      labels = c(
-        "Absolute",
-        "Relative"
-      )
-    )
-  )
+## Multicollinearity
 
-RQ1 <- lm(
-  vo2max ~
-    vo2_type * (weight_c + fat_c + lbm_c + hb_c + hct_c),
-  data = rq1_data
-)
-
-summary(RQ1)
+```{r rq1-vif}
+vif(A1) |>
+  enframe(name = "predictor", value = "VIF") |>
+  knitr::kable(digits = 2, caption = "RQ1: Variance inflation factors")
 ```
 
+**Interpretation:** Fat % (1.4) and lean mass (1.6) show little collinearity. Hemoglobin (4.9) and hematocrit (4.7) are correlated with each other, as expected, so their individual coefficients are less precise. This does not affect the joint test of the blood variables below.
 
+## Assumption checks
 
-# RQ2
-```{r}
-A1_age <- lm(
-  vo2max_new ~
-    weight_c + fat_c + lbm_c + hb_c + hct_c +
-    age_c +
-    weight_c:age_c +
-    fat_c:age_c +
-    lbm_c:age_c +
-    hb_c:age_c +
-    hct_c:age_c,
-  data = df_clean
-)
+```{r rq1-assumptions, fig.height=7}
+par(mfrow = c(2, 2)); plot(A1); par(mfrow = c(1, 1))
 
-summary(A1_age)
-
-A2_age <- lm(
-  vo2max_absolute_new ~
-    weight_c + fat_c + lbm_c + hb_c + hct_c +
-    age_c +
-    weight_c:age_c +
-    fat_c:age_c +
-    lbm_c:age_c +
-    hb_c:age_c +
-    hct_c:age_c,
-  data = df_clean
-)
-
-summary(A2_age)
-
-A1_sex <- lm(
-  vo2max_new ~
-    weight_c + fat_c + lbm_c + hb_c + hct_c +
-    gender +
-    weight_c:gender +
-    fat_c:gender +
-    lbm_c:gender +
-    hb_c:gender +
-    hct_c:gender,
-  data = df_clean
-)
-
-summary(A1_sex)
-
-A2_sex <- lm(
-  vo2max_absolute_new ~
-    weight_c + fat_c + lbm_c + hb_c + hct_c +
-    gender +
-    weight_c:gender +
-    fat_c:gender +
-    lbm_c:gender +
-    hb_c:gender +
-    hct_c:gender,
-  data = df_clean
-)
-
-summary(A2_sex)
-
-A1_modality <- lm(
-  vo2max_new ~
-    weight_c + fat_c + lbm_c + hb_c + hct_c +
-    test +
-    weight_c:test +
-    fat_c:test +
-    lbm_c:test +
-    hb_c:test +
-    hct_c:test,
-  data = df_clean
-)
-
-summary(A1_modality)
-
-A2_modality <- lm(
-  vo2max_absolute_new ~
-    weight_c + fat_c + lbm_c + hb_c + hct_c +
-    test +
-    weight_c:test +
-    fat_c:test +
-    lbm_c:test +
-    hb_c:test +
-    hct_c:test,
-  data = df_clean
-)
-
-summary(A2_modality)
+bptest(A1) |> tidy() |> tab("Breusch-Pagan test for heteroscedasticity")
 ```
 
+**Interpretation:** The residuals are centered around zero with no curvature, and the Q-Q plot follows the line. No observation has a large Cook's distance. The Breusch-Pagan test detects some non-constant variance (p < 0.001), so robust standard errors are used next as a check.
 
-```{r}
-A1_interactions_age <- tidy(A1_age, conf.int = TRUE) %>%
-  filter(str_detect(term, ":"))
+## Robust standard errors
 
-A2_interactions_age <- tidy(A2_age, conf.int = TRUE) %>%
-  filter(str_detect(term, ":"))
-
-A1_interactions_age
-A2_interactions_age
-
-A1_interactions_sex <- tidy(A1_sex, conf.int = TRUE) %>%
-  filter(str_detect(term, ":"))
-
-A2_interactions_sex <- tidy(A2_sex, conf.int = TRUE) %>%
-  filter(str_detect(term, ":"))
-
-A1_interactions_sex
-A2_interactions_sex
-
-A1_interactions_mod <- tidy(A1_modality, conf.int = TRUE) %>%
-  filter(str_detect(term, ":"))
-
-A2_interactions_mod <- tidy(A2_modality, conf.int = TRUE) %>%
-  filter(str_detect(term, ":"))
-
-A1_interactions_mod
-A2_interactions_mod
-
+```{r rq1-robust}
+coeftest(A1, vcov = vcovHC(A1, type = "HC3")) |>
+  tidy() |>
+  tab("RQ1: Coefficients with robust (HC3) standard errors")
 ```
 
+**Interpretation:** The robust standard errors are almost identical to the regular ones (e.g. lean mass 0.0021 in both), and the conclusions do not change: lean mass and fat % are significant, hemoglobin and hematocrit are not. The heteroscedasticity is therefore not a concern for these results.
 
-```{r}
-par(mfrow = c(2, 2))
-plot(A1)
+## Do the blood variables add anything?
 
-par(mfrow = c(2, 2))
-plot(A2)
+```{r rq1-blood}
+A1_body <- lm(vo2max_absolute ~ fat + lbm, data = df_clean)
+
+anova(A1_body, A1) |>
+  tidy() |>
+  mutate(model = c("fat + lbm", "fat + lbm + hb + hct"), .before = 1) |>
+  select(-term) |>
+  tab("Model comparison: body composition only vs. adding hb and hct")
 ```
 
+**Interpretation:** Adding hemoglobin and hematocrit to a model with fat % and lean mass does not improve fit (F = 0.92, p = 0.40). Body composition accounts for the explainable variance, and the blood variables add essentially nothing.
 
+# Research Question 2
+
+> Do age, sex, or exercise modality moderate the associations between the known predictors and absolute VO2max?
+
+## Models
+
+```{r rq2-models}
+df_clean <- df_clean |>
+  mutate(sex = factor(sex), test = factor(test))
+
+# For each moderator: a main-effects model and a full model with all predictor x moderator interactions
+A2_age_main <- lm(vo2max_absolute ~  fat + lbm + hb + hct + age, data = df_clean)
+A2_age      <- lm(vo2max_absolute ~ (fat + lbm + hb + hct) * age, data = df_clean)
+
+A2_sex_main <- lm(vo2max_absolute ~  fat + lbm + hb + hct + sex, data = df_clean)
+A2_sex      <- lm(vo2max_absolute ~ (fat + lbm + hb + hct) * sex, data = df_clean)
+
+A2_test_main <- lm(vo2max_absolute ~  fat + lbm + hb + hct + test, data = df_clean)
+A2_test      <- lm(vo2max_absolute ~ (fat + lbm + hb + hct) * test, data = df_clean)
+
+# Model fit comparison
+bind_rows(
+  "RQ1 (no moderator)" = glance(A1),
+  "Age"                = glance(A2_age),
+  "Sex"                = glance(A2_sex),
+  "Modality"           = glance(A2_test),
+  .id = "model"
+) |>
+  select(model, r.squared, adj.r.squared, sigma) |>
+  tab("R-squared with and without moderators")
+
+tidy(A2_age)  |> tab("Full model: predictors x age")
+tidy(A2_sex)  |> tab("Full model: predictors x sex")
+tidy(A2_test) |> tab("Full model: predictors x modality")
+```
+
+**Interpretation:** Adding the moderator terms raises R² only slightly, from 0.722 in RQ1 to 0.735 (age), 0.730 (sex) and 0.735 (modality). The predictors are not centered, so the main-effect rows (and the sex and modality rows) describe the reference case where the other predictors equal zero and should not be interpreted on their own. The rows to read are the interaction terms (e.g. `fat:age`), which show how a predictor's slope differs by age, sex or modality. The tests below make that clearer.
+
+## Step 1: Does each moderator change the relationships at all?
+
+Joint F-test of all four predictor x moderator interactions, with Holm adjustment across the three moderators.
+
+```{r rq2-omnibus}
+bind_rows(
+  Age      = tidy(anova(A2_age_main,  A2_age)),
+  Sex      = tidy(anova(A2_sex_main,  A2_sex)),
+  Modality = tidy(anova(A2_test_main, A2_test)),
+  .id = "moderator"
+) |>
+  filter(!is.na(statistic)) |>
+  select(moderator, df, F_value = statistic, p.value) |>
+  mutate(p_holm = p.adjust(p.value, method = "holm")) |>
+  tab("Joint test of all interactions per moderator")
+```
+
+**Interpretation:** All three moderators change the predictor relationships, but with very different strength. Modality is clearly significant (F = 3.79, Holm-adjusted p = 0.0007). Age (p = 0.044) and sex (p = 0.040) are only just significant after adjustment, so those results are suggestive rather than strong.
+
+## Step 2: Which predictors are moderated?
+
+```{r rq2-terms}
+Anova(A2_age,  type = 2) |> tidy() |> tab("Type II tests: predictors x age")
+Anova(A2_sex,  type = 2) |> tidy() |> tab("Type II tests: predictors x sex")
+Anova(A2_test, type = 2) |> tidy() |> tab("Type II tests: predictors x modality")
+
+# Direction and size of the age effect from the main-effects model
+tidy(A2_age_main, conf.int = TRUE) |>
+  filter(term == "age") |>
+  tab("Age effect on VO2max (L/min per year), main-effects model")
+```
+
+**Interpretation:** The moderation is concentrated in one predictor: body fat. The fat slope differs by age (p = 0.007), by sex (p = 0.005) and strongly by modality (p < 0.0001). The lean mass and blood-variable interactions are not significant (lean mass x modality p = 0.068 and hemoglobin x modality p = 0.086 are trends only). Age also has an independent main effect on VO2max (p < 0.001); the last table gives its direction and size per year.
+
+## Robust standard errors
+
+```{r rq2-robust}
+coeftest(A2_age,  vcov = vcovHC(A2_age,  type = "HC3")) |> tidy() |> tab("Robust (HC3): predictors x age")
+coeftest(A2_sex,  vcov = vcovHC(A2_sex,  type = "HC3")) |> tidy() |> tab("Robust (HC3): predictors x sex")
+coeftest(A2_test, vcov = vcovHC(A2_test, type = "HC3")) |> tidy() |> tab("Robust (HC3): predictors x modality")
+```
+
+**Interpretation:** The robust results agree with the F-tests: `fat:age` (p = 0.005), `fat:sexM` (p = 0.003) and `fat:testwatersports` (p < 0.001) remain significant. A few weaker interactions (hemoglobin x sex, lean mass and hemoglobin x watersports) reach p < 0.05 only with robust errors, so they are less reliable and should be treated as exploratory.
+
+## Step 3: Body fat slope within each group
+
+```{r rq2-slopes}
+emtrends(A2_test, ~ test, var = "fat") |> as.data.frame() |> tab("Fat slope by modality")
+emtrends(A2_sex,  ~ sex,  var = "fat") |> as.data.frame() |> tab("Fat slope by sex")
+emtrends(A2_age,  ~ age,  var = "fat", at = list(age = c(20, 30, 40))) |>
+  as.data.frame() |> tab("Fat slope by age")
+```
+
+**Interpretation:** These are the effects of one additional percentage point of body fat on VO2max (L/min) within each group. Body fat lowers VO2max most in cyclists (about -0.04) and less in runners (about -0.03), while in watersports athletes the slope is close to zero. Among men the fat slope is about -0.026, while among women it is close to zero. The fat penalty also grows with age (more negative at 40 than at 20). Check the confidence intervals: slopes whose CIs include zero mean body fat is not clearly related to VO2max in that group.
+
+# Summary
+
+- Lean mass (positive) and body fat % (negative) explain about 72% of the variance in absolute VO2max. Hemoglobin and hematocrit add nothing beyond them.
+- Age, sex and modality moderate these relationships mainly through body fat. The modality effect is the strongest, and the age and sex effects are more modest.
+- Age, sex and modality differ from each other in this sample (watersports athletes are younger and mostly male), so the three fat interactions may partly reflect the same underlying difference.
