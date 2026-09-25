@@ -3,9 +3,6 @@ title: "Predictors of Absolute VO2max"
 author: "Dawson Shero"
 date: "`r Sys.Date()`"
 output:
-  pdf_document:
-    toc: true
-    toc_depth: '2'
   html_document:
     toc: true
     toc_depth: 2
@@ -13,6 +10,9 @@ output:
     theme: flatly
     code_folding: hide
     df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: '2'
 ---
 
 ```{r setup, include=FALSE}
@@ -77,7 +77,7 @@ read_kv_sheet <- function(path, sheet) {
   }
 
 read_one_file <- function(path) { 
-  meta1 <- read_kv_sheet( path, sheet = "Sheet1" ) 
+  meta1 <- read_kv_sheet( path, sheet = "Sheet1" )
   meta3 <- read_kv_sheet( path, sheet = "Sheet3" )
   meta <- bind_cols( meta1, meta3, .name_repair = "unique" )
   test_data <- read_excel( path, sheet = "Sheet2" ) %>% clean_names() 
@@ -133,13 +133,17 @@ df_raw_sum <- read.csv(here("data", "Data_Summary_with_age.csv"))
 df_raw_sum <- df_raw_sum |> 
   select("file", "age")
 
+df_raw <- df_raw |> 
+  group_by(file) |> 
+  mutate(max_bla = max(bla))
+
 ### Making a df that only has variables that are needed for the study
 
 colnames(df_raw)
 
 df_clean <- df_raw |> 
-  select("file", "gender", "event", "test", "height", "weight", "fat", "lbm", "hb",
-         "hct", "vo2max", "vo2max_absolute", "hrmax", "load_tlac",
+  select("file", "gender", "event", "test", "height", "weight", "bmi", "fat", "lbm", "hb",
+         "hct", "rbc", "wbc", "max_bla", "vo2max", "vo2max_absolute", "hrmax", "load_tlac",
          "hr_tlac", "percent_vo2max_tlac", "percent_h_rmax_tlac", "bla_tlac")
 
 df_clean <- merge(df_clean, df_raw_sum, by = "file")
@@ -180,12 +184,30 @@ df_clean <- df_clean %>%
     c("Rowing", "Kayak") ~ "watersports",
     .default = test
   ))
+
+df_clean <- df_clean |> 
+  mutate(age_cat = case_when(
+    age < 20             ~ "<20",
+    age >= 20 & age < 30  ~ "20-29",
+    age >= 30 & age < 40  ~ "30-39",
+    age >= 40 & age < 50  ~ "40-49",
+    age >= 50 & age < 60  ~ "50-59",
+    age >= 60 & age < 70  ~ "60-69",
+    age >= 70             ~ "70+",
+    TRUE ~ NA_character_
+  )) |> 
+  mutate(age_cat = factor(age_cat, 
+                           levels = c("<20", "20-29", "30-39", "40-49", 
+                                      "50-59", "60-69", "70+"),
+                           ordered = TRUE)) |> 
+  relocate(age_cat, .after = age)
 ```
 
 **Cleaning notes**
 
 - Four participants (A539, A140, A562, A1065) were excluded because of implausible or irreconcilable values (VO2max, body fat %, hematocrit).
 - Participants under 18 or with missing values were removed, and rowing and kayak were combined into "watersports".
+- Blood lactate(bla) used max() function due to bla being linked to max effort in GxT 
 - Final analytic sample: **N = `r nrow(df_clean)`** (`r sum(df_clean$sex == "F")` women, `r sum(df_clean$sex == "M")` men).
 
 
@@ -228,6 +250,19 @@ df_clean |>
     .groups = "drop"
   ) |>
   knitr::kable(digits = 2, caption = "By sex")
+
+# By Age
+df_clean |>
+  group_by(age_cat) |>
+  summarise(
+    n = n(),
+    age_mean = mean(age),
+    age_sd = sd(age),
+    abs_vo2_mean = mean(vo2max_absolute),
+    abs_vo2_sd = sd(vo2max_absolute),
+    .groups = "drop"
+  ) |>
+  knitr::kable(digits = 2, caption = "By age")
 ```
 
 ```{r center-note, include=FALSE, eval=FALSE}
@@ -276,7 +311,7 @@ ggplot(df_clean, aes(x = test, fill = test)) +
 ## Model and coefficients
 
 ```{r rq1-model}
-A1 <- lm(vo2max_absolute ~ fat + lbm + hb + hct, data = df_clean)
+A1 <- lm(vo2max_absolute ~ height + fat + lbm + hb + hct, data = df_clean)
 
 summary(A1)
 
@@ -311,24 +346,15 @@ bptest(A1) |> tidy() |> tab("Breusch-Pagan test for heteroscedasticity")
 
 **Interpretation:** The residuals are centered around zero with no curvature, and the Q-Q plot follows the line. No observation has a large Cook's distance. The Breusch-Pagan test detects some non-constant variance (p < 0.001), so robust standard errors are used next as a check.
 
-## Robust standard errors
-
-```{r rq1-robust}
-coeftest(A1, vcov = vcovHC(A1, type = "HC3")) |>
-  tidy() |>
-  tab("RQ1: Coefficients with robust (HC3) standard errors")
-```
-
-**Interpretation:** The robust standard errors are almost identical to the regular ones (e.g. lean mass 0.0021 in both), and the conclusions do not change: lean mass and fat % are significant, hemoglobin and hematocrit are not. The heteroscedasticity is therefore not a concern for these results.
 
 ## Do the blood variables add anything?
 
 ```{r rq1-blood}
-A1_body <- lm(vo2max_absolute ~ fat + lbm, data = df_clean)
+A1_body <- lm(vo2max_absolute ~ fat + lbm + height, data = df_clean)
 
 anova(A1_body, A1) |>
   tidy() |>
-  mutate(model = c("fat + lbm", "fat + lbm + hb + hct"), .before = 1) |>
+  mutate(model = c("fat + lbm + height", "fat + lbm + height + hb + hct + max_bla"), .before = 1) |>
   select(-term) |>
   tab("Model comparison: body composition only vs. adding hb and hct")
 ```
@@ -346,14 +372,20 @@ df_clean <- df_clean |>
   mutate(sex = factor(sex), test = factor(test))
 
 # For each moderator: a main-effects model and a full model with all predictor x moderator interactions
-A2_age_main <- lm(vo2max_absolute ~  fat + lbm + hb + hct + age, data = df_clean)
-A2_age      <- lm(vo2max_absolute ~ (fat + lbm + hb + hct) * age, data = df_clean)
+A2_age_main <- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + age, data = df_clean)
+A2_age      <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * age, data = df_clean)
 
-A2_sex_main <- lm(vo2max_absolute ~  fat + lbm + hb + hct + sex, data = df_clean)
-A2_sex      <- lm(vo2max_absolute ~ (fat + lbm + hb + hct) * sex, data = df_clean)
+summary(A2_age)
 
-A2_test_main <- lm(vo2max_absolute ~  fat + lbm + hb + hct + test, data = df_clean)
-A2_test      <- lm(vo2max_absolute ~ (fat + lbm + hb + hct) * test, data = df_clean)
+A2_sex_main <- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + sex, data = df_clean)
+A2_sex      <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * sex, data = df_clean)
+
+summary(A2_sex)
+
+A2_test_main <- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + test, data = df_clean)
+A2_test      <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * test, data = df_clean)
+
+summary(A2_test)
 
 # Model fit comparison
 bind_rows(
@@ -407,22 +439,13 @@ tidy(A2_age_main, conf.int = TRUE) |>
 
 **Interpretation:** The moderation is concentrated in one predictor: body fat. The fat slope differs by age (p = 0.007), by sex (p = 0.005) and strongly by modality (p < 0.0001). The lean mass and blood-variable interactions are not significant (lean mass x modality p = 0.068 and hemoglobin x modality p = 0.086 are trends only). Age also has an independent main effect on VO2max (p < 0.001); the last table gives its direction and size per year.
 
-## Robust standard errors
-
-```{r rq2-robust}
-coeftest(A2_age,  vcov = vcovHC(A2_age,  type = "HC3")) |> tidy() |> tab("Robust (HC3): predictors x age")
-coeftest(A2_sex,  vcov = vcovHC(A2_sex,  type = "HC3")) |> tidy() |> tab("Robust (HC3): predictors x sex")
-coeftest(A2_test, vcov = vcovHC(A2_test, type = "HC3")) |> tidy() |> tab("Robust (HC3): predictors x modality")
-```
-
-**Interpretation:** The robust results agree with the F-tests: `fat:age` (p = 0.005), `fat:sexM` (p = 0.003) and `fat:testwatersports` (p < 0.001) remain significant. A few weaker interactions (hemoglobin x sex, lean mass and hemoglobin x watersports) reach p < 0.05 only with robust errors, so they are less reliable and should be treated as exploratory.
 
 ## Step 3: Body fat slope within each group
 
 ```{r rq2-slopes}
 emtrends(A2_test, ~ test, var = "fat") |> as.data.frame() |> tab("Fat slope by modality")
 emtrends(A2_sex,  ~ sex,  var = "fat") |> as.data.frame() |> tab("Fat slope by sex")
-emtrends(A2_age,  ~ age,  var = "fat", at = list(age = c(20, 30, 40))) |>
+emtrends(A2_age,  ~ age,  var = "fat", at = list(age = c(20, 30))) |>
   as.data.frame() |> tab("Fat slope by age")
 ```
 
