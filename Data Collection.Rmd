@@ -42,6 +42,7 @@ library(sandwich)
 library(emmeans)
 library(interactions)
 library(performance)
+library(ggcorrplot)
 
 # Helper for tables: 3 decimals, and p-values below 0.001 shown as "<0.001"
 tab <- function(x, caption = NULL) {
@@ -312,9 +313,12 @@ ggplot(df_clean, aes(x = test, fill = test)) +
 
 ```{r rq1-model}
 A1 <- lm(vo2max_absolute ~ height + fat + lbm + hb + hct, data = df_clean)
+A2 <- lm(vo2max_absolute ~ hb + hct + rbc + wbc + max_bla, data = df_clean)
+A3 <- lm(vo2max_absolute ~ height + fat + lbm, data = df_clean)
 
 summary(A1)
-
+summary(A2)
+summary(A3)
 avPlots(A1)
 
 tidy(A1, conf.int = TRUE) |> tab("RQ1: Regression coefficients")
@@ -371,36 +375,33 @@ anova(A1_body, A1) |>
 df_clean <- df_clean |>
   mutate(sex = factor(sex), test = factor(test))
 
-# For each moderator: a main-effects model and a full model with all predictor x moderator interactions
+# For each moderator: a main-effects model and an interaction model was made
 A2_age_main <- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + age, data = df_clean)
-A2_age      <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * age, data = df_clean)
+A2_age <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * age, data = df_clean)
 
 summary(A2_age)
 
 A2_sex_main <- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + sex, data = df_clean)
-A2_sex      <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * sex, data = df_clean)
+A2_sex <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * sex, data = df_clean)
 
 summary(A2_sex)
 
 A2_test_main <- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + test, data = df_clean)
-A2_test      <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * test, data = df_clean)
+A2_test <- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * test, data = df_clean)
 
 summary(A2_test)
 
 # Model fit comparison
 bind_rows(
   "RQ1 (no moderator)" = glance(A1),
-  "Age"                = glance(A2_age),
-  "Sex"                = glance(A2_sex),
-  "Modality"           = glance(A2_test),
+  "Age" = glance(A2_age),
+  "Sex" = glance(A2_sex),
+  "Modality" = glance(A2_test),
   .id = "model"
 ) |>
   select(model, r.squared, adj.r.squared, sigma) |>
   tab("R-squared with and without moderators")
 
-tidy(A2_age)  |> tab("Full model: predictors x age")
-tidy(A2_sex)  |> tab("Full model: predictors x sex")
-tidy(A2_test) |> tab("Full model: predictors x modality")
 ```
 
 **Interpretation:** Adding the moderator terms raises R² only slightly, from 0.722 in RQ1 to 0.735 (age), 0.730 (sex) and 0.735 (modality). The predictors are not centered, so the main-effect rows (and the sex and modality rows) describe the reference case where the other predictors equal zero and should not be interpreted on their own. The rows to read are the interaction terms (e.g. `fat:age`), which show how a predictor's slope differs by age, sex or modality. The tests below make that clearer.
@@ -411,8 +412,8 @@ Joint F-test of all four predictor x moderator interactions, with Holm adjustmen
 
 ```{r rq2-omnibus}
 bind_rows(
-  Age      = tidy(anova(A2_age_main,  A2_age)),
-  Sex      = tidy(anova(A2_sex_main,  A2_sex)),
+  Age = tidy(anova(A2_age_main,  A2_age)),
+  Sex = tidy(anova(A2_sex_main,  A2_sex)),
   Modality = tidy(anova(A2_test_main, A2_test)),
   .id = "moderator"
 ) |>
@@ -427,8 +428,8 @@ bind_rows(
 ## Step 2: Which predictors are moderated?
 
 ```{r rq2-terms}
-Anova(A2_age,  type = 2) |> tidy() |> tab("Type II tests: predictors x age")
-Anova(A2_sex,  type = 2) |> tidy() |> tab("Type II tests: predictors x sex")
+Anova(A2_age, type = 2) |> tidy() |> tab("Type II tests: predictors x age")
+Anova(A2_sex, type = 2) |> tidy() |> tab("Type II tests: predictors x sex")
 Anova(A2_test, type = 2) |> tidy() |> tab("Type II tests: predictors x modality")
 
 # Direction and size of the age effect from the main-effects model
@@ -444,8 +445,8 @@ tidy(A2_age_main, conf.int = TRUE) |>
 
 ```{r rq2-slopes}
 emtrends(A2_test, ~ test, var = "fat") |> as.data.frame() |> tab("Fat slope by modality")
-emtrends(A2_sex,  ~ sex,  var = "fat") |> as.data.frame() |> tab("Fat slope by sex")
-emtrends(A2_age,  ~ age,  var = "fat", at = list(age = c(20, 30))) |>
+emtrends(A2_sex, ~ sex,  var = "fat") |> as.data.frame() |> tab("Fat slope by sex")
+emtrends(A2_age, ~ age,  var = "fat", at = list(age = c(20, 30))) |>
   as.data.frame() |> tab("Fat slope by age")
 ```
 

@@ -2933,7 +2933,24 @@ df_clean &lt;- df_clean %&gt;%
   mutate(test = case_match(test,
     c(&quot;Rowing&quot;, &quot;Kayak&quot;) ~ &quot;watersports&quot;,
     .default = test
-  ))</code></pre>
+  ))
+
+df_clean &lt;- df_clean |&gt; 
+  mutate(age_cat = case_when(
+    age &lt; 20             ~ &quot;&lt;20&quot;,
+    age &gt;= 20 &amp; age &lt; 30  ~ &quot;20-29&quot;,
+    age &gt;= 30 &amp; age &lt; 40  ~ &quot;30-39&quot;,
+    age &gt;= 40 &amp; age &lt; 50  ~ &quot;40-49&quot;,
+    age &gt;= 50 &amp; age &lt; 60  ~ &quot;50-59&quot;,
+    age &gt;= 60 &amp; age &lt; 70  ~ &quot;60-69&quot;,
+    age &gt;= 70             ~ &quot;70+&quot;,
+    TRUE ~ NA_character_
+  )) |&gt; 
+  mutate(age_cat = factor(age_cat, 
+                           levels = c(&quot;&lt;20&quot;, &quot;20-29&quot;, &quot;30-39&quot;, &quot;40-49&quot;, 
+                                      &quot;50-59&quot;, &quot;60-69&quot;, &quot;70+&quot;),
+                           ordered = TRUE)) |&gt; 
+  relocate(age_cat, .after = age)</code></pre>
 <p><strong>Cleaning notes</strong></p>
 <ul>
 <li>Four participants (A539, A140, A562, A1065) were excluded because of
@@ -2942,8 +2959,7 @@ hematocrit).</li>
 <li>Participants under 18 or with missing values were removed, and
 rowing and kayak were combined into “watersports”.</li>
 <li>Blood lactate(bla) used max() function due to bla being linked to
-max effort in GxT<br />
-</li>
+max effort in GxT</li>
 <li>Final analytic sample: <strong>N = 699</strong> (147 women, 552
 men).</li>
 </ul>
@@ -3072,6 +3088,73 @@ df_clean |&gt;
 <td align="right">7.22</td>
 <td align="right">4.93</td>
 <td align="right">0.62</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code># By Age
+df_clean |&gt;
+  group_by(age_cat) |&gt;
+  summarise(
+    n = n(),
+    age_mean = mean(age),
+    age_sd = sd(age),
+    abs_vo2_mean = mean(vo2max_absolute),
+    abs_vo2_sd = sd(vo2max_absolute),
+    .groups = &quot;drop&quot;
+  ) |&gt;
+  knitr::kable(digits = 2, caption = &quot;By age&quot;)</code></pre>
+<table>
+<caption>By age</caption>
+<thead>
+<tr class="header">
+<th align="left">age_cat</th>
+<th align="right">n</th>
+<th align="right">age_mean</th>
+<th align="right">age_sd</th>
+<th align="right">abs_vo2_mean</th>
+<th align="right">abs_vo2_sd</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">&lt;20</td>
+<td align="right">87</td>
+<td align="right">18.57</td>
+<td align="right">0.50</td>
+<td align="right">4.81</td>
+<td align="right">0.75</td>
+</tr>
+<tr class="even">
+<td align="left">20-29</td>
+<td align="right">364</td>
+<td align="right">24.38</td>
+<td align="right">2.96</td>
+<td align="right">4.71</td>
+<td align="right">0.88</td>
+</tr>
+<tr class="odd">
+<td align="left">30-39</td>
+<td align="right">202</td>
+<td align="right">33.70</td>
+<td align="right">2.60</td>
+<td align="right">4.35</td>
+<td align="right">0.84</td>
+</tr>
+<tr class="even">
+<td align="left">40-49</td>
+<td align="right">45</td>
+<td align="right">42.22</td>
+<td align="right">2.18</td>
+<td align="right">4.58</td>
+<td align="right">0.74</td>
+</tr>
+<tr class="odd">
+<td align="left">60-69</td>
+<td align="right">1</td>
+<td align="right">65.00</td>
+<td align="right">NA</td>
+<td align="right">3.23</td>
+<td align="right">NA</td>
 </tr>
 </tbody>
 </table>
@@ -3439,9 +3522,9 @@ the known predictors and absolute VO2max?</p>
 <pre class="r"><code>df_clean &lt;- df_clean |&gt;
   mutate(sex = factor(sex), test = factor(test))
 
-# For each moderator: a main-effects model and a full model with all predictor x moderator interactions
+# For each moderator: a main-effects model and an interaction model was made
 A2_age_main &lt;- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + age, data = df_clean)
-A2_age      &lt;- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * age, data = df_clean)
+A2_age &lt;- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * age, data = df_clean)
 
 summary(A2_age)</code></pre>
 <pre><code>## 
@@ -3474,7 +3557,7 @@ summary(A2_age)</code></pre>
 ## Multiple R-squared:  0.7371, Adjusted R-squared:  0.7329 
 ## F-statistic: 175.1 on 11 and 687 DF,  p-value: &lt; 2.2e-16</code></pre>
 <pre class="r"><code>A2_sex_main &lt;- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + sex, data = df_clean)
-A2_sex      &lt;- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * sex, data = df_clean)
+A2_sex &lt;- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * sex, data = df_clean)
 
 summary(A2_sex)</code></pre>
 <pre><code>## 
@@ -3507,7 +3590,7 @@ summary(A2_sex)</code></pre>
 ## Multiple R-squared:  0.731,  Adjusted R-squared:  0.7267 
 ## F-statistic: 169.7 on 11 and 687 DF,  p-value: &lt; 2.2e-16</code></pre>
 <pre class="r"><code>A2_test_main &lt;- lm(vo2max_absolute ~  height + fat + lbm + hb + hct + test, data = df_clean)
-A2_test      &lt;- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * test, data = df_clean)
+A2_test &lt;- lm(vo2max_absolute ~ (height + fat + lbm + hb + hct) * test, data = df_clean)
 
 summary(A2_test)</code></pre>
 <pre><code>## 
@@ -3548,9 +3631,9 @@ summary(A2_test)</code></pre>
 <pre class="r"><code># Model fit comparison
 bind_rows(
   &quot;RQ1 (no moderator)&quot; = glance(A1),
-  &quot;Age&quot;                = glance(A2_age),
-  &quot;Sex&quot;                = glance(A2_sex),
-  &quot;Modality&quot;           = glance(A2_test),
+  &quot;Age&quot; = glance(A2_age),
+  &quot;Sex&quot; = glance(A2_sex),
+  &quot;Modality&quot; = glance(A2_test),
   .id = &quot;model&quot;
 ) |&gt;
   select(model, r.squared, adj.r.squared, sigma) |&gt;
@@ -3592,345 +3675,6 @@ bind_rows(
 </tr>
 </tbody>
 </table>
-<pre class="r"><code>tidy(A2_age)  |&gt; tab(&quot;Full model: predictors x age&quot;)</code></pre>
-<table>
-<caption>Full model: predictors x age</caption>
-<thead>
-<tr class="header">
-<th align="left">term</th>
-<th align="right">estimate</th>
-<th align="right">std.error</th>
-<th align="right">statistic</th>
-<th align="left">p.value</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td align="left">(Intercept)</td>
-<td align="right">1.597</td>
-<td align="right">2.455</td>
-<td align="right">0.650</td>
-<td align="left">0.516</td>
-</tr>
-<tr class="even">
-<td align="left">height</td>
-<td align="right">-2.732</td>
-<td align="right">1.478</td>
-<td align="right">-1.849</td>
-<td align="left">0.065</td>
-</tr>
-<tr class="odd">
-<td align="left">fat</td>
-<td align="right">0.014</td>
-<td align="right">0.015</td>
-<td align="right">0.965</td>
-<td align="left">0.335</td>
-</tr>
-<tr class="even">
-<td align="left">lbm</td>
-<td align="right">0.087</td>
-<td align="right">0.013</td>
-<td align="right">6.536</td>
-<td align="left">&lt;0.001</td>
-</tr>
-<tr class="odd">
-<td align="left">hb</td>
-<td align="right">0.200</td>
-<td align="right">0.138</td>
-<td align="right">1.449</td>
-<td align="left">0.148</td>
-</tr>
-<tr class="even">
-<td align="left">hct</td>
-<td align="right">-0.011</td>
-<td align="right">0.049</td>
-<td align="right">-0.226</td>
-<td align="left">0.822</td>
-</tr>
-<tr class="odd">
-<td align="left">age</td>
-<td align="right">-0.060</td>
-<td align="right">0.087</td>
-<td align="right">-0.692</td>
-<td align="left">0.489</td>
-</tr>
-<tr class="even">
-<td align="left">height:age</td>
-<td align="right">0.118</td>
-<td align="right">0.052</td>
-<td align="right">2.254</td>
-<td align="left">0.025</td>
-</tr>
-<tr class="odd">
-<td align="left">fat:age</td>
-<td align="right">-0.001</td>
-<td align="right">0.001</td>
-<td align="right">-2.461</td>
-<td align="left">0.014</td>
-</tr>
-<tr class="even">
-<td align="left">lbm:age</td>
-<td align="right">-0.001</td>
-<td align="right">0.000</td>
-<td align="right">-2.272</td>
-<td align="left">0.023</td>
-</tr>
-<tr class="odd">
-<td align="left">hb:age</td>
-<td align="right">-0.006</td>
-<td align="right">0.005</td>
-<td align="right">-1.292</td>
-<td align="left">0.197</td>
-</tr>
-<tr class="even">
-<td align="left">hct:age</td>
-<td align="right">0.000</td>
-<td align="right">0.002</td>
-<td align="right">0.234</td>
-<td align="left">0.815</td>
-</tr>
-</tbody>
-</table>
-<pre class="r"><code>tidy(A2_sex)  |&gt; tab(&quot;Full model: predictors x sex&quot;)</code></pre>
-<table>
-<caption>Full model: predictors x sex</caption>
-<thead>
-<tr class="header">
-<th align="left">term</th>
-<th align="right">estimate</th>
-<th align="right">std.error</th>
-<th align="right">statistic</th>
-<th align="left">p.value</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td align="left">(Intercept)</td>
-<td align="right">-0.561</td>
-<td align="right">1.457</td>
-<td align="right">-0.385</td>
-<td align="left">0.700</td>
-</tr>
-<tr class="even">
-<td align="left">height</td>
-<td align="right">0.510</td>
-<td align="right">0.957</td>
-<td align="right">0.533</td>
-<td align="left">0.595</td>
-</tr>
-<tr class="odd">
-<td align="left">fat</td>
-<td align="right">-0.002</td>
-<td align="right">0.007</td>
-<td align="right">-0.316</td>
-<td align="left">0.752</td>
-</tr>
-<tr class="even">
-<td align="left">lbm</td>
-<td align="right">0.059</td>
-<td align="right">0.011</td>
-<td align="right">5.541</td>
-<td align="left">&lt;0.001</td>
-</tr>
-<tr class="odd">
-<td align="left">hb</td>
-<td align="right">0.137</td>
-<td align="right">0.079</td>
-<td align="right">1.739</td>
-<td align="left">0.082</td>
-</tr>
-<tr class="even">
-<td align="left">hct</td>
-<td align="right">-0.038</td>
-<td align="right">0.027</td>
-<td align="right">-1.403</td>
-<td align="left">0.161</td>
-</tr>
-<tr class="odd">
-<td align="left">sexM</td>
-<td align="right">0.773</td>
-<td align="right">1.600</td>
-<td align="right">0.483</td>
-<td align="left">0.629</td>
-</tr>
-<tr class="even">
-<td align="left">height:sexM</td>
-<td align="right">0.450</td>
-<td align="right">1.035</td>
-<td align="right">0.434</td>
-<td align="left">0.664</td>
-</tr>
-<tr class="odd">
-<td align="left">fat:sexM</td>
-<td align="right">-0.020</td>
-<td align="right">0.008</td>
-<td align="right">-2.429</td>
-<td align="left">0.015</td>
-</tr>
-<tr class="even">
-<td align="left">lbm:sexM</td>
-<td align="right">-0.010</td>
-<td align="right">0.011</td>
-<td align="right">-0.858</td>
-<td align="left">0.391</td>
-</tr>
-<tr class="odd">
-<td align="left">hb:sexM</td>
-<td align="right">-0.149</td>
-<td align="right">0.089</td>
-<td align="right">-1.674</td>
-<td align="left">0.095</td>
-</tr>
-<tr class="even">
-<td align="left">hct:sexM</td>
-<td align="right">0.041</td>
-<td align="right">0.031</td>
-<td align="right">1.323</td>
-<td align="left">0.186</td>
-</tr>
-</tbody>
-</table>
-<pre class="r"><code>tidy(A2_test) |&gt; tab(&quot;Full model: predictors x modality&quot;)</code></pre>
-<table>
-<caption>Full model: predictors x modality</caption>
-<thead>
-<tr class="header">
-<th align="left">term</th>
-<th align="right">estimate</th>
-<th align="right">std.error</th>
-<th align="right">statistic</th>
-<th align="left">p.value</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td align="left">(Intercept)</td>
-<td align="right">-0.048</td>
-<td align="right">1.039</td>
-<td align="right">-0.046</td>
-<td align="left">0.963</td>
-</tr>
-<tr class="even">
-<td align="left">height</td>
-<td align="right">1.809</td>
-<td align="right">0.636</td>
-<td align="right">2.846</td>
-<td align="left">0.005</td>
-</tr>
-<tr class="odd">
-<td align="left">fat</td>
-<td align="right">-0.038</td>
-<td align="right">0.006</td>
-<td align="right">-6.439</td>
-<td align="left">&lt;0.001</td>
-</tr>
-<tr class="even">
-<td align="left">lbm</td>
-<td align="right">0.045</td>
-<td align="right">0.005</td>
-<td align="right">8.763</td>
-<td align="left">&lt;0.001</td>
-</tr>
-<tr class="odd">
-<td align="left">hb</td>
-<td align="right">-0.026</td>
-<td align="right">0.067</td>
-<td align="right">-0.395</td>
-<td align="left">0.693</td>
-</tr>
-<tr class="even">
-<td align="left">hct</td>
-<td align="right">-0.009</td>
-<td align="right">0.024</td>
-<td align="right">-0.391</td>
-<td align="left">0.696</td>
-</tr>
-<tr class="odd">
-<td align="left">testRunning</td>
-<td align="right">0.351</td>
-<td align="right">1.453</td>
-<td align="right">0.241</td>
-<td align="left">0.809</td>
-</tr>
-<tr class="even">
-<td align="left">testwatersports</td>
-<td align="right">-1.086</td>
-<td align="right">1.531</td>
-<td align="right">-0.709</td>
-<td align="left">0.479</td>
-</tr>
-<tr class="odd">
-<td align="left">height:testRunning</td>
-<td align="right">-1.629</td>
-<td align="right">0.892</td>
-<td align="right">-1.826</td>
-<td align="left">0.068</td>
-</tr>
-<tr class="even">
-<td align="left">height:testwatersports</td>
-<td align="right">-1.717</td>
-<td align="right">0.920</td>
-<td align="right">-1.867</td>
-<td align="left">0.062</td>
-</tr>
-<tr class="odd">
-<td align="left">fat:testRunning</td>
-<td align="right">0.014</td>
-<td align="right">0.009</td>
-<td align="right">1.541</td>
-<td align="left">0.124</td>
-</tr>
-<tr class="even">
-<td align="left">fat:testwatersports</td>
-<td align="right">0.036</td>
-<td align="right">0.009</td>
-<td align="right">4.155</td>
-<td align="left">&lt;0.001</td>
-</tr>
-<tr class="odd">
-<td align="left">lbm:testRunning</td>
-<td align="right">0.015</td>
-<td align="right">0.008</td>
-<td align="right">1.945</td>
-<td align="left">0.052</td>
-</tr>
-<tr class="even">
-<td align="left">lbm:testwatersports</td>
-<td align="right">0.022</td>
-<td align="right">0.008</td>
-<td align="right">2.713</td>
-<td align="left">0.007</td>
-</tr>
-<tr class="odd">
-<td align="left">hb:testRunning</td>
-<td align="right">0.055</td>
-<td align="right">0.091</td>
-<td align="right">0.610</td>
-<td align="left">0.542</td>
-</tr>
-<tr class="even">
-<td align="left">hb:testwatersports</td>
-<td align="right">0.157</td>
-<td align="right">0.090</td>
-<td align="right">1.735</td>
-<td align="left">0.083</td>
-</tr>
-<tr class="odd">
-<td align="left">hct:testRunning</td>
-<td align="right">0.012</td>
-<td align="right">0.033</td>
-<td align="right">0.358</td>
-<td align="left">0.720</td>
-</tr>
-<tr class="even">
-<td align="left">hct:testwatersports</td>
-<td align="right">-0.004</td>
-<td align="right">0.032</td>
-<td align="right">-0.114</td>
-<td align="left">0.909</td>
-</tr>
-</tbody>
-</table>
 <p><strong>Interpretation:</strong> Adding the moderator terms raises R²
 only slightly, from 0.722 in RQ1 to 0.735 (age), 0.730 (sex) and 0.735
 (modality). The predictors are not centered, so the main-effect rows
@@ -3945,8 +3689,8 @@ tests below make that clearer.</p>
 <p>Joint F-test of all four predictor x moderator interactions, with
 Holm adjustment across the three moderators.</p>
 <pre class="r"><code>bind_rows(
-  Age      = tidy(anova(A2_age_main,  A2_age)),
-  Sex      = tidy(anova(A2_sex_main,  A2_sex)),
+  Age = tidy(anova(A2_age_main,  A2_age)),
+  Sex = tidy(anova(A2_sex_main,  A2_sex)),
   Modality = tidy(anova(A2_test_main, A2_test)),
   .id = &quot;moderator&quot;
 ) |&gt;
@@ -3997,7 +3741,7 @@ so those results are suggestive rather than strong.</p>
 </div>
 <div id="step-2-which-predictors-are-moderated" class="section level2">
 <h2>Step 2: Which predictors are moderated?</h2>
-<pre class="r"><code>Anova(A2_age,  type = 2) |&gt; tidy() |&gt; tab(&quot;Type II tests: predictors x age&quot;)</code></pre>
+<pre class="r"><code>Anova(A2_age, type = 2) |&gt; tidy() |&gt; tab(&quot;Type II tests: predictors x age&quot;)</code></pre>
 <table>
 <caption>Type II tests: predictors x age</caption>
 <thead>
@@ -4096,7 +3840,7 @@ so those results are suggestive rather than strong.</p>
 </tr>
 </tbody>
 </table>
-<pre class="r"><code>Anova(A2_sex,  type = 2) |&gt; tidy() |&gt; tab(&quot;Type II tests: predictors x sex&quot;)</code></pre>
+<pre class="r"><code>Anova(A2_sex, type = 2) |&gt; tidy() |&gt; tab(&quot;Type II tests: predictors x sex&quot;)</code></pre>
 <table>
 <caption>Type II tests: predictors x sex</caption>
 <thead>
@@ -4374,7 +4118,7 @@ last table gives its direction and size per year.</p>
 </tr>
 </tbody>
 </table>
-<pre class="r"><code>emtrends(A2_sex,  ~ sex,  var = &quot;fat&quot;) |&gt; as.data.frame() |&gt; tab(&quot;Fat slope by sex&quot;)</code></pre>
+<pre class="r"><code>emtrends(A2_sex, ~ sex,  var = &quot;fat&quot;) |&gt; as.data.frame() |&gt; tab(&quot;Fat slope by sex&quot;)</code></pre>
 <table>
 <caption>Fat slope by sex</caption>
 <thead>
@@ -4406,7 +4150,7 @@ last table gives its direction and size per year.</p>
 </tr>
 </tbody>
 </table>
-<pre class="r"><code>emtrends(A2_age,  ~ age,  var = &quot;fat&quot;, at = list(age = c(20, 30, 40))) |&gt;
+<pre class="r"><code>emtrends(A2_age, ~ age,  var = &quot;fat&quot;, at = list(age = c(20, 30))) |&gt;
   as.data.frame() |&gt; tab(&quot;Fat slope by age&quot;)</code></pre>
 <table>
 <caption>Fat slope by age</caption>
@@ -4436,14 +4180,6 @@ last table gives its direction and size per year.</p>
 <td align="right">687</td>
 <td align="right">-0.032</td>
 <td align="right">-0.017</td>
-</tr>
-<tr class="odd">
-<td align="right">40</td>
-<td align="right">-0.038</td>
-<td align="right">0.007</td>
-<td align="right">687</td>
-<td align="right">-0.052</td>
-<td align="right">-0.023</td>
 </tr>
 </tbody>
 </table>
