@@ -44,6 +44,7 @@ library(interactions)
 library(performance)
 library(ggcorrplot)
 
+
 # Helper for tables: 3 decimals, and p-values below 0.001 shown as "<0.001"
 tab <- function(x, caption = NULL) {
   x |>
@@ -188,18 +189,12 @@ df_clean <- df_clean %>%
 
 df_clean <- df_clean |> 
   mutate(age_cat = case_when(
-    age < 20             ~ "<20",
-    age >= 20 & age < 30  ~ "20-29",
-    age >= 30 & age < 40  ~ "30-39",
-    age >= 40 & age < 50  ~ "40-49",
-    age >= 50 & age < 60  ~ "50-59",
-    age >= 60 & age < 70  ~ "60-69",
-    age >= 70             ~ "70+",
+    age <= 30  ~ "under 30",
+    age >= 30 ~ "over 30",
     TRUE ~ NA_character_
   )) |> 
   mutate(age_cat = factor(age_cat, 
-                           levels = c("<20", "20-29", "30-39", "40-49", 
-                                      "50-59", "60-69", "70+"),
+                           levels = c("under 30", "over 30"),
                            ordered = TRUE)) |> 
   relocate(age_cat, .after = age)
 ```
@@ -312,7 +307,7 @@ ggplot(df_clean, aes(x = test, fill = test)) +
 ## Model and coefficients
 
 ```{r rq1-model}
-A1 <- lm(vo2max_absolute ~ height + fat + lbm + hb + hct, data = df_clean)
+A1 <- lm(vo2max_absolute ~ height + fat + lbm + hb + hct + rbc + wbc + max_bla, data = df_clean)
 A2 <- lm(vo2max_absolute ~ hb + hct + rbc + wbc + max_bla, data = df_clean)
 A3 <- lm(vo2max_absolute ~ height + fat + lbm, data = df_clean)
 
