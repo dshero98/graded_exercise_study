@@ -5,3 +5,5 @@
 ##### blood metrics are the only predictors, they showed significance. Once we added body comp metrics those significance 
 ##### disapear. This shows that practically it may not be best practice to rely on invasive metrics like blood when running
 ##### GxT with body comp metrics being recorded to predict VO2 max test. 
+
+##### Run a pirori analysis for ideal sample size for male and female
