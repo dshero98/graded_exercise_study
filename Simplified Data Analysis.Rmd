@@ -1,0 +1,220 @@
+---
+title: "Simplified data analysis"
+author: "Dawson Shero"
+date: "2026-09-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 4.5,
+  fig.align = "center"
+)
+```
+
+```{r}
+library(here) 
+library(readxl) 
+library(dplyr) 
+library(purrr) 
+library(janitor) 
+library(tibble)
+library(lubridate)
+library(tidyverse)
+library(broom)
+library(car)
+library(lmtest)
+library(sandwich)
+library(emmeans)
+library(interactions)
+library(performance)
+library(ggcorrplot)
+library(rstatix)
+library(psych)
+```
+
+```{r cleaning, results='hide'}
+df_raw <- read.csv(here("data", "combined_tests.csv"))
+
+df_raw <- df_raw |> 
+  rename(file = "source_file")
+
+df_raw_sum <- read.csv(here("data", "Data_Summary_with_age.csv"))
+
+df_raw_sum <- df_raw_sum |> 
+  select("file", "age")
+
+df_raw <- df_raw |> 
+  group_by(file) |> 
+  mutate(max_bla = max(bla))
+
+### Making a df that only has variables that are needed for the study
+
+colnames(df_raw)
+
+df_clean <- df_raw |> 
+  select("file", "gender", "event", "test", "height", "weight", "bmi", "fat", "lbm", "hb",
+         "hct", "rbc", "wbc", "max_bla", "vo2max", "vo2max_absolute", "hrmax", "load_tlac",
+         "hr_tlac", "percent_vo2max_tlac", "percent_h_rmax_tlac", "bla_tlac")
+
+df_clean <- merge(df_clean, df_raw_sum, by = "file")
+
+df_clean <- df_clean |> 
+  relocate("age", .after = gender)
+
+df_clean <- df_clean |> 
+  distinct(file, .keep_all = T)
+
+df_clean <- df_clean |>
+  filter(!file %in% c("A539.xlsx", "A140.xlsx", "A562.xlsx", "A1065.xlsx"))
+
+### Df manipulation and cleaning for analysis
+colnames(df_clean)
+
+anyNA(df_clean)
+
+colSums(is.na(df_clean))
+
+df_clean$weight[df_clean$weight == "Missing"] <- NA
+
+df_clean <- df_clean |> 
+  na.omit() |> 
+  mutate(weight = as.numeric(as.character(weight)))
+
+df_clean <- df_clean |> 
+  mutate(across(where(is.numeric), ~ round(., 2)))
+
+df_clean <- df_clean |> 
+  filter(age >= 18)
+
+df_clean <- df_clean |> 
+  rename(sex = gender)
+
+df_clean <- df_clean %>%
+  mutate(test = case_match(test,
+    c("Rowing", "Kayak") ~ "watersports",
+    .default = test
+  ))
+
+df_clean <- df_clean |> 
+  mutate(age_cat = case_when(
+    age <= 30  ~ "under 30",
+    age >= 30 ~ "over 30",
+    TRUE ~ NA_character_
+  )) |> 
+  mutate(age_cat = factor(age_cat, 
+                           levels = c("under 30", "over 30"),
+                           ordered = TRUE)) |> 
+  relocate(age_cat, .after = age)
+```
+
+### Is there a significant difference in absolute VO2max across GxT protocols
+
+```{r}
+## Setting test as factor to allow post-hoc
+str(df_clean$test)
+df_clean$test <- as.factor(df_clean$test)
+
+# Statistical assumptions 
+
+## Homogeneity of Variance
+leveneTest(vo2max_absolute ~ test, data = df_clean)
+
+##### Due the the p-value being lower than .05 in Levene test variance was not equal, thus changed the ANOVA into a Welch ANOVA for un-equal variance
+
+## Normality (Shapiro-Wilk)
+df_clean |> 
+  group_by(test) |> 
+  shapiro_test(vo2max_absolute)
+
+##### Due to the large sample size we can still safely use Welch ANOVA due to the robustness to violations of mormality (Central Limit Therom)
+
+## Look at skewness of test data
+ggplot(df_clean, aes(x = vo2max_absolute, fill = test)) +
+  geom_histogram(binwidth = 0.2, color = "black", alpha = 0.7) +
+  facet_wrap(~ test, ncol = 1) +
+  theme_minimal() +
+  labs(
+    title = "Absolute VO2max Distribution Across Test Modalities",
+    x = "Absolute VO2max (L/min)",
+    y = "Count"
+  )
+
+df_clean |> 
+  group_by(test) |> 
+  summarise(skewness = skew(vo2max_absolute),
+    n = n()
+  )
+
+##### I ran this to make sure the there wasn't any skewness so that welch ANOVA could run properly
+
+# Analysis (welch ANOVA + Post-Hoc)
+
+## independent one way ANOVA (welch ANOVA)
+aov_model <- oneway.test(vo2max_absolute ~ test, data = df_clean, var.equal = F)
+aov_model
+
+##### One-way test showed significance, now running post-hoc test to find which test is significant
+
+## Games-Howell post-hoc
+games_howell_test(data = df_clean, vo2max_absolute ~ test)
+
+##### Games-Howell test showed statistically significant pairwise differences across all three test modalities
+```
+
+> This does show that there is statistically significant differences in the GxT protocols and absolute VO2max. This allows us to then go and look at how known predictors may change the associations of absolute VO2max based on the GxT protocol the researchers use. 
+
+### how do known predictors for vo2max change based on the selection of exercise modalitiy
+
+```{r}
+# multivariable linear regression model (Forward selection regression)
+A1 <- lm(vo2max_absolute ~ , data = df_clean)
+summary(A1)
+
+
+
+
+```
+
+
+### Visualizations for Descriptives
+
+```{r}
+df_clean |> 
+  group_by(age_cat) |> 
+  summarise(mean_vo2 = mean(vo2max_absolute)) |> 
+  ggplot(aes(x = age_cat, y = mean_vo2, fill = age_cat)) +
+  geom_col(alpha = 0.7, color = "black") +
+    labs(
+    title = "Mean Absolute VO2max by Age Category",
+    x = "Age Category",
+    y = "Mean Absolute VO2max (L/min)") +
+  theme_minimal()
+
+df_clean |> 
+  group_by(test) |> 
+  summarise(mean_vo2 = mean(vo2max_absolute)) |> 
+  ggplot(aes(x = test, y = mean_vo2, fill = test)) +
+  geom_col(alpha = 0.7, color = "black") +
+    labs(
+    title = "Mean Absolute VO2max by Test",
+    x = "Age Category",
+    y = "Mean Absolute VO2max (L/min)") +
+  theme_minimal() 
+
+df_clean |> 
+  group_by(sex) |> 
+  summarise(mean_vo2 = mean(vo2max_absolute)) |> 
+  ggplot(aes(x = sex, y = mean_vo2, fill = sex)) +
+  geom_col(alpha = 0.7, color = "black") +
+    labs(
+    title = "Mean Absolute VO2max by Sex",
+    x = "Age Category",
+    y = "Mean Absolute VO2max (L/min)") +
+  theme_minimal() 
+  
+```
