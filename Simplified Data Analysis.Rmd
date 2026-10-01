@@ -171,13 +171,17 @@ games_howell_test(data = df_clean, vo2max_absolute ~ test)
 ### how do known predictors for vo2max change based on the selection of exercise modalitiy
 
 ```{r}
-# multivariable linear regression model (Forward selection regression)
-A1 <- lm(vo2max_absolute ~ , data = df_clean)
-summary(A1)
+simple_df_clean <- df_clean |> 
+  select("height", "weight", "bmi", "fat", "lbm", "hb",
+         "hct", "rbc", "wbc", "max_bla", "vo2max_absolute")
+  
+# Initialize an empty model
+forward_model <- lm(vo2max_absolute ~ ., data = simple_df_clean)
 
+# Forward stepwise regression
+forward_model <- step(forward_model, direction = "forward", scope = formula(~ .))
 
-
-
+summary(forward_model)
 ```
 
 
