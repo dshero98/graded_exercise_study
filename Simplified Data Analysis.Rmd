@@ -170,29 +170,42 @@ games_howell_test(data = df_clean, vo2max_absolute ~ test)
 ```{r}
 # Building models of various predictors (block entry)
 
-#Demographics
+## Demographics
 B1 <- lm(vo2max_absolute ~ sex + age, data = df_clean)
-# + Body composition
+## + Body composition
 B2 <- update(B1, . ~ . + height + fat + lbm)
-# + Hematology
+## + Hematology
 B3 <- update(B2, . ~ . + hb + hct + max_bla)
-# + Test main effect
+## + Test main effect
 B4 <- update(B3, . ~ . + test)
-# + Moderation
+## + Moderation
 B5 <- update(B4, . ~ . + (height + fat + lbm + hb + hct + max_bla) * test) 
 summary(B5)
 
-# Does body composition improve the demographic model?
+## Does body composition improve the demographic model?
 anova(B1, B2)
 
-# Do hematological/metabolic variables improve the model?
+## Do hematological/metabolic variables improve the model?
 anova(B2, B3)
 
-# Does exercise modality improve the additive model?
+## Does exercise modality improve the additive model?
 anova(B3, B4)
 
-# Overall test of whether predictor associations differ by modality
+## Overall test of whether predictor associations differ by modality
 anova(B4, B5)
+
+# Assumption checks
+
+## The standard diagnostic plots
+par(mfrow = c(2, 2))
+plot(B5)
+par(mfrow = c(1, 1))
+
+## Multicollinearity
+vif(B5)
+
+## Homoscedasticity
+bptest(B5)
 
 # Individual interaction tests
 drop1(B5, test = "F")
