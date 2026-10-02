@@ -18,20 +18,14 @@ knitr::opts_chunk$set(
 
 ```{r}
 library(here) 
-library(readxl) 
-library(janitor) 
 library(tidyverse)
 library(broom)
 library(car)
 library(lmtest)
-library(sandwich)
 library(emmeans)
-library(interactions)
-library(performance)
-library(ggcorrplot)
 library(rstatix)
 library(psych)
-library(modelsummary)
+library(ggeffects)
 ```
 
 ```{r cleaning, results='hide'}
@@ -237,6 +231,29 @@ ggplot(r2_tbl, aes(x = model, y = adj.r.squared)) +
   theme_minimal(base_size = 12) +
   labs(title = "Variance in absolute VO2max explained by each model block",
        x = NULL, y = "Adjusted R²")
+```
+
+```{r}
+pred_all <- map_dfr(vars, function(v) {
+  ggemmeans(B5, terms = c(v, "test")) |>
+    as.data.frame() |>
+    mutate(predictor = v)
+})
+
+ggplot(pred_all, aes(x = x, y = predicted, color = group, fill = group)) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.15, color = NA) +
+  geom_line(linewidth = 1) +
+  facet_wrap(~ predictor, scales = "free_x") +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  theme_minimal(base_size = 13) +
+  labs(
+    title = "Predicted absolute VO2max across each predictor, by test modality",
+    x = "Predictor value (units differ by panel)",
+    y = "Absolute VO2max (L/min)",
+    color = "Test Modality",
+    fill = "Test Modality"
+  )
 ```
 
 ```{r}
