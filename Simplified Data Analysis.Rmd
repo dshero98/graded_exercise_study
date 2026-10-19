@@ -101,6 +101,7 @@ df_clean <- df_clean |>
                            levels = c("under 30", "over 30"),
                            ordered = TRUE)) |> 
   relocate(age_cat, .after = age)
+
 ```
 
 ### Is there a significant difference in absolute VO2max across GxT protocols
@@ -162,31 +163,28 @@ games_howell_test(data = df_clean, vo2max_absolute ~ test)
 ### how do known predictors for vo2max change based on the selection of exercise modalitiy
 
 ```{r}
-# Building models of various predictors (block entry)
+# Building models of various know predictors
 
-## Demographics
+# Just demographics
 B1 <- lm(vo2max_absolute ~ sex + age, data = df_clean)
-## + Body composition
-B2 <- update(B1, . ~ . + height + fat + lbm)
-## + Hematology
-B3 <- update(B2, . ~ . + hb + hct + max_bla)
-## + Test main effect
-B4 <- update(B3, . ~ . + test)
-## + Moderation
-B5 <- update(B4, . ~ . + (height + fat + lbm + hb + hct + max_bla) * test) 
+summary(B1)
+
+# Body Comp
+B2 <- lm(vo2max_absolute ~ height + fat + lbm + sex + age, data = df_clean)
+summary(B2)
+
+# hematological
+B3 <- lm(vo2max_absolute ~ hb + hct + max_bla + sex + age, data = df_clean)
+summary(B3)
+
+# interactions
+B4 <- lm(vo2max_absolute ~ sex + age + height + fat + lbm + hb + hct + max_bla + test, data = df_clean)
+summary(B4)
+
+# Full moderator
+B5 <- lm(vo2max_absolute ~ (sex + age + height + fat + lbm + hb + hct + max_bla) * test, data = df_clean)
 summary(B5)
 
-## Does body composition improve the demographic model?
-anova(B1, B2)
-
-## Do hematological/metabolic variables improve the model?
-anova(B2, B3)
-
-## Does exercise modality improve the additive model?
-anova(B3, B4)
-
-## Overall test of whether predictor associations differ by modality
-anova(B4, B5)
 
 # Assumption checks
 
@@ -201,9 +199,6 @@ vif(B5)
 ## Homoscedasticity
 bptest(B5)
 
-# Individual interaction tests
-drop1(B5, test = "F")
-
 # What is the slope of the predictor within each protocol
 vars <- c("height", "fat", "lbm", "hb", "hct", "max_bla")
 purrr::map(purrr::set_names(vars), ~ emtrends(B5, ~ test, var = .x, infer = TRUE))
@@ -216,8 +211,7 @@ purrr::map(purrr::set_names(vars), ~ emtrends(B5, ~ test, var = .x, infer = TRUE
 
 ```{r}
 r2_tbl <- map_dfr(
-  list("1: Demographics" = B1, "2: + Body comp" = B2, "3: + Hematology" = B3,
-       "4: + Test" = B4, "5: + Moderation" = B5),
+  list("1" = B1, "2" = B2, "3" = B3, "4" = B4, "5" = B5),
   ~ glance(.x) |> dplyr::select(r.squared, adj.r.squared),
   .id = "model"
 ) |>
